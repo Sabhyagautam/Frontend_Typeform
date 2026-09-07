@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { Toaster } from "react-hot-toast";
+import KeepAlive from "@/components/KeepAlive";
 
 export const metadata: Metadata = {
   title: "Typeform",
@@ -24,6 +25,8 @@ export default function RootLayout({
       </head>
       <body>
         {children}
+        {/* Pings the backend every 10 minutes to prevent Render cold starts */}
+        <KeepAlive />
         <Toaster
           position="bottom-center"
           toastOptions={{
