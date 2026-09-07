@@ -9,13 +9,14 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { createPortal } from "react-dom";
 import toast from "react-hot-toast";
 import {
   Plus, Search, MoreHorizontal, Copy, Trash2, ExternalLink,
   BarChart2, Edit3, Globe, EyeOff, ChevronDown,
   LayoutGrid, List, Check, Link2, HelpCircle, Settings,
-  ChevronRight, Users, Zap, BarChart, FlaskConical,
-  Star, FolderOpen, ChevronUp,
+  Home, Users, Zap, Star, FolderOpen, ChevronUp,
+  FileText,
 } from "lucide-react";
 import { formsApi, FormListItem } from "@/lib/api";
 import { formatRelativeDate } from "@/lib/utils";
@@ -39,17 +40,35 @@ function FormThumb({ id }: { id: string }) {
 function RowMenu({ form, onRename, onDuplicate, onDelete, onTogglePublish }:
   { form: FormListItem; onRename: () => void; onDuplicate: () => void; onDelete: () => void; onTogglePublish: () => void }) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const router = useRouter();
+
   useEffect(() => {
     if (!open) return;
-    const fn = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
+    const fn = (e: MouseEvent) => { setOpen(false); };
+    // Close on any click outside
     document.addEventListener("mousedown", fn);
     return () => document.removeEventListener("mousedown", fn);
   }, [open]);
 
+  function openMenu(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (btnRef.current) {
+      const rect = btnRef.current.getBoundingClientRect();
+      // Position menu below the button, aligned to right edge
+      setMenuPos({
+        top: rect.bottom + window.scrollY + 4,
+        left: rect.right + window.scrollX - 190,
+      });
+    }
+    setOpen(v => !v);
+  }
+
   const Item = ({ icon, label, onClick, danger }: { icon: React.ReactNode; label: string; onClick: () => void; danger?: boolean }) => (
-    <button onClick={(e) => { e.stopPropagation(); onClick(); setOpen(false); }}
-      style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 14px", fontSize: 13.5, color: danger ? "#dc2626" : "#374151", background: "none", border: "none", width: "100%", textAlign: "left", cursor: "pointer", fontFamily: "inherit" }}
+    <button
+      onMouseDown={e => { e.stopPropagation(); onClick(); setOpen(false); }}
+      style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 14px", fontSize: 13.5, color: danger ? "#dc2626" : "#374151", background: "none", border: "none", width: "100%", textAlign: "left", cursor: "pointer", fontFamily: "inherit" }}
       onMouseEnter={e => e.currentTarget.style.background = danger ? "#fef2f2" : "#f9fafb"}
       onMouseLeave={e => e.currentTarget.style.background = "none"}>
       {icon} {label}
@@ -57,30 +76,54 @@ function RowMenu({ form, onRename, onDuplicate, onDelete, onTogglePublish }:
   );
 
   return (
-    <div ref={ref} style={{ position: "relative" }} onClick={e => e.stopPropagation()}>
-      <button onClick={() => setOpen(v => !v)}
+    <div onClick={e => e.stopPropagation()}>
+      <button
+        ref={btnRef}
+        onClick={openMenu}
         style={{ width: 32, height: 32, border: "1px solid #e5e7eb", borderRadius: 6, background: "white", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "#6b7280" }}
         onMouseEnter={e => e.currentTarget.style.background = "#f9fafb"}
         onMouseLeave={e => e.currentTarget.style.background = "white"}>
         <MoreHorizontal size={15} />
       </button>
-      {open && (
-        <div style={{ position: "absolute", right: 0, top: 36, background: "white", border: "1px solid #e5e7eb", borderRadius: 10, boxShadow: "0 8px 30px rgba(0,0,0,0.12)", padding: "4px 0", minWidth: 190, zIndex: 300 }}>
-          <Item icon={<Edit3 size={14} />} label="Edit" onClick={() => {}} />
+
+      {open && typeof document !== "undefined" && createPortal(
+        <div
+          onMouseDown={e => e.stopPropagation()}
+          style={{
+            position: "absolute",
+            top: menuPos.top,
+            left: menuPos.left,
+            background: "white",
+            border: "1px solid #e5e7eb",
+            borderRadius: 10,
+            boxShadow: "0 8px 30px rgba(0,0,0,0.14)",
+            padding: "4px 0",
+            minWidth: 190,
+            zIndex: 9999,
+          }}>
+          <Item icon={<Edit3 size={14} />} label="Edit" onClick={() => router.push(`/forms/${form.id}/builder`)} />
+          <Item icon={<Edit3 size={14} />} label="Rename" onClick={onRename} />
           <Item icon={<Copy size={14} />} label="Duplicate" onClick={onDuplicate} />
-          <Item icon={<BarChart2 size={14} />} label="View results" onClick={() => {}} />
+          <Item icon={<BarChart2 size={14} />} label="View results" onClick={() => router.push(`/forms/${form.id}/results`)} />
           <div style={{ height: 1, background: "#f3f4f6", margin: "4px 0" }} />
-          <Item icon={form.status === "published" ? <EyeOff size={14} /> : <Globe size={14} />}
-            label={form.status === "published" ? "Unpublish" : "Publish"} onClick={onTogglePublish} />
+          <Item
+            icon={form.status === "published" ? <EyeOff size={14} /> : <Globe size={14} />}
+            label={form.status === "published" ? "Unpublish" : "Publish"}
+            onClick={onTogglePublish}
+          />
           {form.status === "published" && form.public_id && (
             <Item icon={<Link2 size={14} />} label="Copy link" onClick={() => {
               navigator.clipboard.writeText(`${window.location.origin}/f/${form.public_id}`);
               toast.success("Link copied!");
             }} />
           )}
+          {form.status === "published" && form.public_id && (
+            <Item icon={<ExternalLink size={14} />} label="Open form" onClick={() => window.open(`/f/${form.public_id}`, "_blank")} />
+          )}
           <div style={{ height: 1, background: "#f3f4f6", margin: "4px 0" }} />
           <Item icon={<Trash2 size={14} />} label="Delete" onClick={onDelete} danger />
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
